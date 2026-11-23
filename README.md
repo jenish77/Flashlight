@@ -33,26 +33,6 @@
 
 ---
 
-## ⚙️ How to Configure Your AdMob Ad Unit IDs
-
-Open [`src/config/adConfig.ts`](file:///d:/Flashlight/src/config/adConfig.ts) and paste your two AdMob Ad Unit IDs directly into `USER_ADMOB_IDS`:
-
-```typescript
-export const USER_ADMOB_IDS = {
-  // 1. App Open Ad Unit ID (shown when user opens the app)
-  appOpenAdUnitId: 'ca-app-pub-XXXXXXXXXXXXXXXX/YYYYYYYYYY',
-
-  // 2. Exit Interstitial Ad Unit ID (full-screen ad shown when exiting app)
-  exitInterstitialAdUnitId: 'ca-app-pub-XXXXXXXXXXXXXXXX/ZZZZZZZZZZ',
-
-  // 3. Banner Ad Unit ID (optional)
-  bannerAdUnitId: '',
-};
-```
-*Note: If left empty, official Google test IDs are automatically used so you can safely test right away.*
-
----
-
 ## 📂 Project Architecture
 
 ```text
