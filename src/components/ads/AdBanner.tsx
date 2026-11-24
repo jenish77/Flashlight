@@ -10,7 +10,6 @@ interface AdBannerProps {
   style?: object;
   /**
    * Whether to display a preview placeholder in Expo Go / Dev mode
-   * to ensure layout calculations are accurate
    */
   showPlaceholderInDev?: boolean;
 }
@@ -19,12 +18,18 @@ export const AdBanner: React.FC<AdBannerProps> = ({
   style,
   showPlaceholderInDev = true,
 }) => {
-  const [adError, setAdError] = useState(false);
+  const [adError, setAdError] = useState<boolean>(false);
   const [BannerComponent, setBannerComponent] = useState<any>(null);
   const [BannerSize, setBannerSize] = useState<any>(null);
+  const [currentUnitId, setCurrentUnitId] = useState<string>(AdConfig.bannerAdUnitId);
+  const [hasTriedFallback, setHasTriedFallback] = useState<boolean>(false);
 
   useEffect(() => {
-    // Only attempt to require if the native binary actually registers RNGoogleMobileAdsModule
+    // Keep ad unit ID in sync with testing mode
+    setCurrentUnitId(AdConfig.bannerAdUnitId);
+  }, []);
+
+  useEffect(() => {
     if (!isAdMobNativeBinaryAvailable()) return;
 
     try {
@@ -46,9 +51,9 @@ export const AdBanner: React.FC<AdBannerProps> = ({
     if (__DEV__ && showPlaceholderInDev) {
       return (
         <View style={[styles.placeholderContainer, style]}>
-          <Text style={styles.placeholderBadge}>AdMob Banner</Text>
+          <Text style={styles.placeholderBadge}>AdMob 320x50 Banner</Text>
           <Text style={styles.placeholderText}>
-            Visible in standalone / EAS builds (AdMob disabled in Expo Go)
+            Test Ad appears in standalone release APK on Android device
           </Text>
         </View>
       );
@@ -56,26 +61,42 @@ export const AdBanner: React.FC<AdBannerProps> = ({
     return null;
   }
 
-  // If ad failed to load or module unavailable, safely return null
-  if (adError || !BannerComponent || !BannerSize) {
-    return null;
+  // If module is unavailable or both production & test IDs failed:
+  if (!BannerComponent || !BannerSize || adError) {
+    return (
+      <View style={[styles.container, style]}>
+        <View style={styles.testFallbackBox}>
+          <Text style={styles.testFallbackText}>AdMob Banner (Connecting...)</Text>
+        </View>
+      </View>
+    );
   }
 
-  const adUnitId = AdConfig.bannerAdUnitId;
-  if (!adUnitId) return null;
+  const handleAdFailedToLoad = (error: any) => {
+    console.log(`[AdBanner] Ad failed to load with unit ${currentUnitId}:`, error?.message);
+    if (!hasTriedFallback && currentUnitId !== AdConfig.testBannerId) {
+      console.log('[AdBanner] Switching to official Google test banner ID...');
+      setHasTriedFallback(true);
+      setCurrentUnitId(AdConfig.testBannerId);
+    } else {
+      setAdError(true);
+    }
+  };
 
   return (
     <View style={[styles.container, style]}>
       <BannerComponent
-        unitId={adUnitId}
-        size={BannerSize.ANCHORED_ADAPTIVE_BANNER}
+        key={currentUnitId}
+        unitId={currentUnitId}
+        size={BannerSize.BANNER}
         requestOptions={{
           requestNonPersonalizedAdsOnly: false,
         }}
-        onAdFailedToLoad={(error: any) => {
-          console.log('[AdBanner] Ad failed to load:', error?.message);
-          setAdError(true);
+        onAdLoaded={() => {
+          console.log('[AdBanner] Banner ad successfully loaded & displayed!');
+          setAdError(false);
         }}
+        onAdFailedToLoad={handleAdFailedToLoad}
       />
     </View>
   );
@@ -86,11 +107,13 @@ const styles = StyleSheet.create({
     width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 50,
+    minHeight: 52,
+    height: 52,
+    backgroundColor: 'transparent',
   },
   placeholderContainer: {
     width: '100%',
-    paddingVertical: 8,
+    paddingVertical: 6,
     paddingHorizontal: 16,
     alignItems: 'center',
     justifyContent: 'center',
@@ -99,7 +122,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#1E293B',
     borderStyle: 'dashed',
-    marginVertical: 4,
+    marginVertical: 2,
   },
   placeholderBadge: {
     fontSize: 10,
@@ -109,9 +132,19 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   placeholderText: {
-    fontSize: 10,
+    fontSize: 9,
     color: '#64748B',
     textAlign: 'center',
     marginTop: 2,
+  },
+  testFallbackBox: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 4,
+    backgroundColor: '#0F172A',
+  },
+  testFallbackText: {
+    fontSize: 10,
+    color: '#475569',
   },
 });

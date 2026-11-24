@@ -21,6 +21,7 @@ import {
   ExternalLink,
   Camera,
   Sliders,
+  Sparkles,
 } from 'lucide-react-native';
 
 import { useThemePreference } from '../src/hooks/useThemePreference';
@@ -31,12 +32,14 @@ import {
   saveRestoreBrightnessPreference,
 } from '../src/utils/storage';
 import { isExpoGo } from '../src/utils/environment';
+import { getTestAdsMode, setTestAdsMode } from '../src/config/adConfig';
 
 export default function SettingsScreen() {
   const router = useRouter();
   const { colors, theme, setTheme } = useThemePreference();
 
   const [restoreBrightness, setRestoreBrightness] = useState<boolean>(true);
+  const [testAdsActive, setTestAdsActive] = useState<boolean>(getTestAdsMode());
 
   useEffect(() => {
     async function init() {
@@ -49,6 +52,11 @@ export default function SettingsScreen() {
   const handleToggleRestoreBrightness = async (val: boolean) => {
     setRestoreBrightness(val);
     await saveRestoreBrightnessPreference(val);
+  };
+
+  const handleToggleTestAds = (val: boolean) => {
+    setTestAdsActive(val);
+    setTestAdsMode(val);
   };
 
   const showPrivacyPolicy = () => {
@@ -204,6 +212,45 @@ export default function SettingsScreen() {
               <Switch
                 value={restoreBrightness}
                 onValueChange={handleToggleRestoreBrightness}
+                trackColor={{ false: '#334155', true: colors.primary }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+          </View>
+        </View>
+
+        {/* AdMob Configuration & Testing */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
+            ADMOB & AD TESTING
+          </Text>
+
+          <View
+            style={[
+              styles.card,
+              {
+                backgroundColor: colors.surface,
+                borderColor: colors.surfaceBorder,
+              },
+            ]}
+          >
+            <View style={styles.switchRow}>
+              <View style={styles.switchLabelContainer}>
+                <View style={styles.iconTitleRow}>
+                  <Sparkles size={18} color={colors.primary} strokeWidth={2.2} />
+                  <Text style={[styles.settingLabel, { color: colors.textPrimary }]}>
+                    Google Test Ads Mode
+                  </Text>
+                </View>
+                <Text style={[styles.settingDescription, { color: colors.textMuted }]}>
+                  {testAdsActive
+                    ? 'Active: Serving Google Test Ads (320x50 Banner & Full-Screen Video Ad)'
+                    : 'Inactive: Serving your production AdMob IDs'}
+                </Text>
+              </View>
+              <Switch
+                value={testAdsActive}
+                onValueChange={handleToggleTestAds}
                 trackColor={{ false: '#334155', true: colors.primary }}
                 thumbColor="#FFFFFF"
               />

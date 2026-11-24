@@ -1,18 +1,15 @@
-import { areAdsSupported, isAdMobNativeBinaryAvailable } from '../../utils/environment';
+import { isAdMobNativeBinaryAvailable } from '../../utils/environment';
 import { AdConfig } from '../../config/adConfig';
-import { getLastAppOpenAdTimestamp, setLastAppOpenAdTimestamp } from '../../utils/storage';
 
-let isInitialized = false;
+let isSdkInitialized = false;
 
-// [1] App Open Ad States
-let appOpenAdInstance: any = null;
-let isAppOpenLoaded = false;
-let isAppOpenShowing = false;
+// Interstitial / Video Ad State
+let interstitialInstance: any = null;
+let isInterstitialLoaded = false;
+let isInterstitialShowing = false;
 
-// [2] Exit Interstitial Ad States
-let exitInterstitialInstance: any = null;
-let isExitInterstitialLoaded = false;
-let isExitInterstitialShowing = false;
+// Light toggle counter for 5x toggle trigger
+let lightToggleCounter = 0;
 
 /**
  * Dynamically and safely gets the Google Mobile Ads module without
@@ -38,9 +35,9 @@ function getMobileAdsModule() {
  * Never blocks the main thread or UI.
  */
 export async function initializeMobileAds(): Promise<boolean> {
-  if (isInitialized) return true;
+  if (isSdkInitialized) return true;
   if (!isAdMobNativeBinaryAvailable()) {
-    console.log('[AdMob] Running in Expo Go or environment without native AdMob module; AdMob disabled.');
+    console.log('[AdMob] Native module not present in current environment (e.g. Expo Go).');
     return false;
   }
 
@@ -50,13 +47,21 @@ export async function initializeMobileAds(): Promise<boolean> {
       return false;
     }
 
-    await mobileAds.default().initialize();
-    isInitialized = true;
-    console.log('[AdMob] SDK initialized successfully.');
+    // Configure test devices if needed
+    try {
+      await mobileAds.default().setRequestConfiguration({
+        testDeviceIdentifiers: ['EMULATOR'],
+      });
+    } catch {
+      // Non-critical
+    }
 
-    // Preload both ads in background
-    preloadAppOpenAd();
-    preloadExitInterstitialAd();
+    await mobileAds.default().initialize();
+    isSdkInitialized = true;
+    console.log('[AdMob] Mobile Ads SDK initialized successfully.');
+
+    // Preload an interstitial video ad for the 5x light toggles and exit
+    preloadInterstitialAd();
     return true;
   } catch (err) {
     console.warn('[AdMob] Failed to initialize mobile ads SDK:', err);
@@ -65,78 +70,19 @@ export async function initializeMobileAds(): Promise<boolean> {
 }
 
 // =========================================================================
-// [1] APP OPEN AD (LAUNCH ADVERTISEMENT)
+// [1] LAUNCH FULL-SCREEN VIDEO AD (APP OPEN)
 // =========================================================================
 
 /**
- * Preloads an App Open ad in the background
+ * Loads and plays a full-screen Video Ad when opening the app,
+ * matching the user's reference video advertisement (e.g. Angel One).
+ * 
+ * Has a 3.5-second safety timer: if ad fails or takes too long, it immediately
+ * calls onFinish() so the user is never stuck on a black/blank screen!
  */
-export function preloadAppOpenAd(): void {
-  if (!isAdMobNativeBinaryAvailable() || isAppOpenShowing) return;
-
-  const mobileAds = getMobileAdsModule();
-  if (!mobileAds || !mobileAds.AppOpenAd || !mobileAds.AdEventType) return;
-
-  try {
-    const { AppOpenAd, AdEventType } = mobileAds;
-    const adUnitId = AdConfig.appOpenAdUnitId;
-    if (!adUnitId) return;
-
-    appOpenAdInstance = AppOpenAd.createForAdRequest(adUnitId, {
-      requestNonPersonalizedAdsOnly: false,
-    });
-
-    const unsubscribeLoaded = appOpenAdInstance.addAdEventListener(
-      AdEventType.LOADED,
-      () => {
-        isAppOpenLoaded = true;
-        console.log('[AdMob] App Open ad preloaded.');
-        unsubscribeLoaded();
-      }
-    );
-
-    const unsubscribeError = appOpenAdInstance.addAdEventListener(
-      AdEventType.ERROR,
-      (error: any) => {
-        isAppOpenLoaded = false;
-        console.log('[AdMob] App Open ad load failed:', error?.message);
-        unsubscribeError();
-      }
-    );
-
-    appOpenAdInstance.load();
-  } catch (e) {
-    console.warn('[AdMob] Exception preloading App Open ad:', e);
-  }
-}
-
-async function isEligibleByFrequency(): Promise<boolean> {
-  const lastShown = await getLastAppOpenAdTimestamp();
-  const now = Date.now();
-  if (!lastShown) return true;
-  return now - lastShown >= AdConfig.appOpenAdIntervalMs;
-}
-
-/**
- * Attempts to display an App Open ad during app launch.
- * Non-blocking: if the ad is not ready within maxLaunchWaitMs,
- * it immediately proceeds to the home screen without waiting!
- */
-export async function tryShowAppOpenAdOnLaunch(onFinish: () => void): Promise<void> {
+export function showLaunchVideoAd(onFinish: () => void): void {
   if (!isAdMobNativeBinaryAvailable()) {
     onFinish();
-    return;
-  }
-
-  const eligible = await isEligibleByFrequency();
-  if (!eligible) {
-    console.log('[AdMob] App Open ad skipped due to frequency capping.');
-    onFinish();
-    return;
-  }
-
-  if (isAppOpenLoaded && appOpenAdInstance) {
-    showLoadedAppOpenAd(onFinish);
     return;
   }
 
@@ -148,154 +94,192 @@ export async function tryShowAppOpenAdOnLaunch(onFinish: () => void): Promise<vo
     }
   };
 
-  const timeoutTimer = setTimeout(() => {
-    console.log('[AdMob] Launch ad timeout reached; proceeding to app without blocking.');
+  // 3.5s safety timeout
+  const safetyTimeout = setTimeout(() => {
+    console.log('[AdMob] Launch video ad timeout; entering app.');
     finishOnce();
   }, AdConfig.maxLaunchWaitMs);
 
   const mobileAds = getMobileAdsModule();
-  if (!mobileAds || !mobileAds.AppOpenAd || !mobileAds.AdEventType) {
-    clearTimeout(timeoutTimer);
+  if (!mobileAds || !mobileAds.InterstitialAd || !mobileAds.AdEventType) {
+    clearTimeout(safetyTimeout);
     finishOnce();
     return;
   }
 
-  const { AppOpenAd, AdEventType } = mobileAds;
-  const ad = AppOpenAd.createForAdRequest(AdConfig.appOpenAdUnitId, {
-    requestNonPersonalizedAdsOnly: false,
-  });
-
-  const unsubLoaded = ad.addAdEventListener(AdEventType.LOADED, () => {
-    clearTimeout(timeoutTimer);
-    unsubLoaded();
-    if (!finished) {
-      appOpenAdInstance = ad;
-      isAppOpenLoaded = true;
-      showLoadedAppOpenAd(finishOnce);
-    }
-  });
-
-  const unsubError = ad.addAdEventListener(AdEventType.ERROR, () => {
-    clearTimeout(timeoutTimer);
-    unsubError();
-    finishOnce();
-  });
+  const { InterstitialAd, AdEventType } = mobileAds;
+  const adUnitId = AdConfig.launchVideoAdUnitId;
 
   try {
+    const ad = InterstitialAd.createForAdRequest(adUnitId, {
+      requestNonPersonalizedAdsOnly: false,
+    });
+
+    let unsubClosed: (() => void) | null = null;
+    let unsubError: (() => void) | null = null;
+
+    const cleanupListeners = () => {
+      if (unsubClosed) unsubClosed();
+      if (unsubError) unsubError();
+    };
+
+    const unsubLoaded = ad.addAdEventListener(AdEventType.LOADED, () => {
+      unsubLoaded();
+      try {
+        console.log('[AdMob] Launch video ad loaded! Showing full-screen video...');
+        ad.show();
+      } catch (err) {
+        console.warn('[AdMob] Error calling ad.show():', err);
+        clearTimeout(safetyTimeout);
+        cleanupListeners();
+        finishOnce();
+      }
+    });
+
+    unsubClosed = ad.addAdEventListener(AdEventType.CLOSED, () => {
+      console.log('[AdMob] Launch video ad completed & closed by user.');
+      clearTimeout(safetyTimeout);
+      cleanupListeners();
+      finishOnce();
+      // Preload next interstitial for toggles/exit
+      setTimeout(preloadInterstitialAd, 1500);
+    });
+
+    unsubError = ad.addAdEventListener(AdEventType.ERROR, (error: any) => {
+      console.log('[AdMob] Launch ad failed with unit', adUnitId, ':', error?.message);
+      // If production ad failed (no fill), fallback to official Google test video ad
+      if (adUnitId !== AdConfig.testVideoAdUnitId) {
+        console.log('[AdMob] Falling back to official Google test video ad...');
+        try {
+          const fallbackAd = InterstitialAd.createForAdRequest(AdConfig.testVideoAdUnitId, {
+            requestNonPersonalizedAdsOnly: false,
+          });
+
+          const fallbackUnsubLoaded = fallbackAd.addAdEventListener(AdEventType.LOADED, () => {
+            fallbackUnsubLoaded();
+            fallbackAd.show().catch(() => {
+              clearTimeout(safetyTimeout);
+              finishOnce();
+            });
+          });
+
+          const fallbackUnsubClosed = fallbackAd.addAdEventListener(AdEventType.CLOSED, () => {
+            clearTimeout(safetyTimeout);
+            fallbackUnsubClosed();
+            finishOnce();
+            setTimeout(preloadInterstitialAd, 1500);
+          });
+
+          fallbackAd.addAdEventListener(AdEventType.ERROR, () => {
+            clearTimeout(safetyTimeout);
+            finishOnce();
+          });
+
+          fallbackAd.load();
+        } catch {
+          clearTimeout(safetyTimeout);
+          cleanupListeners();
+          finishOnce();
+        }
+      } else {
+        clearTimeout(safetyTimeout);
+        cleanupListeners();
+        finishOnce();
+      }
+    });
+
     ad.load();
-  } catch {
-    clearTimeout(timeoutTimer);
+  } catch (e) {
+    console.warn('[AdMob] Exception loading launch video ad:', e);
+    clearTimeout(safetyTimeout);
     finishOnce();
   }
 }
 
-function showLoadedAppOpenAd(onDismiss: () => void): void {
-  if (!appOpenAdInstance || !isAppOpenLoaded) {
-    onDismiss();
-    return;
-  }
-
-  const mobileAds = getMobileAdsModule();
-  const AdEventType = mobileAds?.AdEventType;
-
-  isAppOpenShowing = true;
-  isAppOpenLoaded = false;
-
-  let unsubClosed: (() => void) | null = null;
-  let unsubError: (() => void) | null = null;
-
-  const cleanup = () => {
-    isAppOpenShowing = false;
-    appOpenAdInstance = null;
-    if (unsubClosed) unsubClosed();
-    if (unsubError) unsubError();
-    setLastAppOpenAdTimestamp(Date.now());
-    setTimeout(preloadAppOpenAd, 2000);
-    onDismiss();
-  };
-
-  if (AdEventType) {
-    unsubClosed = appOpenAdInstance.addAdEventListener(AdEventType.CLOSED, cleanup);
-    unsubError = appOpenAdInstance.addAdEventListener(AdEventType.ERROR, cleanup);
-  }
-
-  try {
-    appOpenAdInstance.show();
-  } catch (err) {
-    console.warn('[AdMob] Error showing App Open ad:', err);
-    cleanup();
-  }
-}
+// Alias for backwards compatibility
+export const tryShowAppOpenAdOnLaunch = showLaunchVideoAd;
+export const preloadAppOpenAd = () => {};
 
 // =========================================================================
-// [2] INTERSTITIAL AD (FULL-SCREEN AD: 5X LIGHT TOGGLE & APP EXIT)
+// [2] INTERSTITIAL VIDEO AD: 5X LIGHT TOGGLES & APP EXIT
 // =========================================================================
-
-// Counter for user flashlight on/off toggles
-let lightToggleCounter = 0;
 
 /**
- * Called every time the user turns ON or turns OFF the light.
- * Every 5 toggles, it automatically triggers the full-screen interstitial ad.
+ * Called every time the user turns ON or turns OFF the flashlight or strobe.
+ * Every 5 toggles, it automatically triggers the full-screen video interstitial ad.
  */
 export function recordLightToggleAndCheckAd(): void {
   lightToggleCounter += 1;
   console.log(`[AdMob] Light toggle count: ${lightToggleCounter}`);
 
   if (lightToggleCounter % 5 === 0) {
-    console.log('[AdMob] 5th light toggle reached! Showing interstitial advertisement...');
+    console.log('[AdMob] 5th light toggle reached! Showing full-screen advertisement...');
     tryShowInterstitialAd();
   }
 }
 
 /**
- * Preloads the full-screen interstitial ad in background.
+ * Preloads the full-screen interstitial video ad in background.
  */
-export function preloadExitInterstitialAd(): void {
-  if (!isAdMobNativeBinaryAvailable() || isExitInterstitialShowing) return;
+export function preloadInterstitialAd(): void {
+  if (!isAdMobNativeBinaryAvailable() || isInterstitialShowing) return;
 
   const mobileAds = getMobileAdsModule();
   if (!mobileAds || !mobileAds.InterstitialAd || !mobileAds.AdEventType) return;
 
   try {
     const { InterstitialAd, AdEventType } = mobileAds;
-    const adUnitId = AdConfig.exitInterstitialAdUnitId;
-    if (!adUnitId) return;
+    const adUnitId = AdConfig.interstitialAdUnitId;
 
-    exitInterstitialInstance = InterstitialAd.createForAdRequest(adUnitId, {
+    interstitialInstance = InterstitialAd.createForAdRequest(adUnitId, {
       requestNonPersonalizedAdsOnly: false,
     });
 
-    const unsubscribeLoaded = exitInterstitialInstance.addAdEventListener(
+    const unsubscribeLoaded = interstitialInstance.addAdEventListener(
       AdEventType.LOADED,
       () => {
-        isExitInterstitialLoaded = true;
-        console.log('[AdMob] Interstitial ad preloaded & ready.');
+        isInterstitialLoaded = true;
+        console.log('[AdMob] Interstitial video ad preloaded & ready.');
         unsubscribeLoaded();
       }
     );
 
-    const unsubscribeError = exitInterstitialInstance.addAdEventListener(
+    const unsubscribeError = interstitialInstance.addAdEventListener(
       AdEventType.ERROR,
       (error: any) => {
-        isExitInterstitialLoaded = false;
+        isInterstitialLoaded = false;
         console.log('[AdMob] Interstitial ad failed to load:', error?.message);
         unsubscribeError();
-        // Retry preload after 10 seconds
-        setTimeout(preloadExitInterstitialAd, 10000);
+
+        // If production ID failed, preload test video ad so next 5th toggle is guaranteed to show
+        if (adUnitId !== AdConfig.testVideoAdUnitId) {
+          try {
+            interstitialInstance = InterstitialAd.createForAdRequest(AdConfig.testVideoAdUnitId, {
+              requestNonPersonalizedAdsOnly: false,
+            });
+            interstitialInstance.addAdEventListener(AdEventType.LOADED, () => {
+              isInterstitialLoaded = true;
+            });
+            interstitialInstance.load();
+          } catch {
+            setTimeout(preloadInterstitialAd, 10000);
+          }
+        } else {
+          setTimeout(preloadInterstitialAd, 10000);
+        }
       }
     );
 
-    exitInterstitialInstance.load();
+    interstitialInstance.load();
   } catch (err) {
     console.warn('[AdMob] Exception preloading Interstitial ad:', err);
   }
 }
 
-export const preloadInterstitialAd = preloadExitInterstitialAd;
+export const preloadExitInterstitialAd = preloadInterstitialAd;
 
 /**
- * Shows the full-screen Interstitial Ad (for 5x light toggles or app exit).
+ * Shows the full-screen Interstitial Video Ad (for 5x light toggles or app exit).
  * Calls onComplete() once the ad is closed or immediately if ad is not ready/fails.
  */
 export function tryShowInterstitialAd(onComplete?: () => void): void {
@@ -304,18 +288,59 @@ export function tryShowInterstitialAd(onComplete?: () => void): void {
     return;
   }
 
-  if (!isExitInterstitialLoaded || !exitInterstitialInstance) {
-    console.log('[AdMob] Interstitial not ready yet; preloading for next event.');
-    preloadExitInterstitialAd();
-    onComplete?.();
+  if (!isInterstitialLoaded || !interstitialInstance) {
+    console.log('[AdMob] Interstitial not preloaded yet; loading on demand...');
+    // Create and show directly
+    const mobileAds = getMobileAdsModule();
+    if (!mobileAds || !mobileAds.InterstitialAd || !mobileAds.AdEventType) {
+      onComplete?.();
+      return;
+    }
+
+    const { InterstitialAd, AdEventType } = mobileAds;
+    const ad = InterstitialAd.createForAdRequest(AdConfig.interstitialAdUnitId, {
+      requestNonPersonalizedAdsOnly: false,
+    });
+
+    let finished = false;
+    const finish = () => {
+      if (!finished) {
+        finished = true;
+        setTimeout(preloadInterstitialAd, 1500);
+        onComplete?.();
+      }
+    };
+
+    const safety = setTimeout(finish, 4000);
+
+    ad.addAdEventListener(AdEventType.LOADED, () => {
+      try {
+        ad.show();
+      } catch {
+        clearTimeout(safety);
+        finish();
+      }
+    });
+
+    ad.addAdEventListener(AdEventType.CLOSED, () => {
+      clearTimeout(safety);
+      finish();
+    });
+
+    ad.addAdEventListener(AdEventType.ERROR, () => {
+      clearTimeout(safety);
+      finish();
+    });
+
+    ad.load();
     return;
   }
 
   const mobileAds = getMobileAdsModule();
   const AdEventType = mobileAds?.AdEventType;
 
-  isExitInterstitialShowing = true;
-  isExitInterstitialLoaded = false;
+  isInterstitialShowing = true;
+  isInterstitialLoaded = false;
 
   let unsubClosed: (() => void) | null = null;
   let unsubError: (() => void) | null = null;
@@ -324,26 +349,24 @@ export function tryShowInterstitialAd(onComplete?: () => void): void {
   const finishOnce = () => {
     if (!finished) {
       finished = true;
-      isExitInterstitialShowing = false;
-      exitInterstitialInstance = null;
+      isInterstitialShowing = false;
+      interstitialInstance = null;
       if (unsubClosed) unsubClosed();
       if (unsubError) unsubError();
-      // Preload next interstitial ad immediately for seamless subsequent views
-      setTimeout(preloadExitInterstitialAd, 1000);
+      setTimeout(preloadInterstitialAd, 1500);
       onComplete?.();
     }
   };
 
   if (AdEventType) {
-    unsubClosed = exitInterstitialInstance.addAdEventListener(AdEventType.CLOSED, finishOnce);
-    unsubError = exitInterstitialInstance.addAdEventListener(AdEventType.ERROR, finishOnce);
+    unsubClosed = interstitialInstance.addAdEventListener(AdEventType.CLOSED, finishOnce);
+    unsubError = interstitialInstance.addAdEventListener(AdEventType.ERROR, finishOnce);
   }
 
-  // Safety fallback timer: if ad fails to dismiss within 8 seconds, safely dismiss
   const safetyTimeout = setTimeout(finishOnce, 8000);
 
   try {
-    exitInterstitialInstance.show();
+    interstitialInstance.show();
   } catch (e) {
     clearTimeout(safetyTimeout);
     console.warn('[AdMob] Exception showing Interstitial ad:', e);

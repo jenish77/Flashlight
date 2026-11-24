@@ -4,108 +4,130 @@ import { Platform } from 'react-native';
  * =========================================================================
  * AdMob Configuration & Production Unit IDs
  * =========================================================================
- * 
- * You can provide your two separate AdMob Ad Unit IDs below whenever ready,
- * or configure them through environment variables:
- *  - 1. App Open Ad Unit ID (shown when user opens the app)
- *  - 2. Exit Interstitial Ad Unit ID (full-screen ad shown when exiting app)
- *  - 3. Banner Ad Unit ID (bottom anchored banner)
- * 
- * If left empty, official Google Test Ad Unit IDs are automatically used,
- * ensuring safe testing without policy violations.
  */
 
 export const USER_ADMOB_IDS = {
-  // [1] App Open Ad Unit ID (shown when opening the app)
+  // Production AdMob App ID
+  appId: 'ca-app-pub-4691559300152959~6016914204',
+
+  // [1] App Open Ad Unit ID (shown when user opens the app)
   appOpenAdUnitId: 'ca-app-pub-4691559300152959/4759672854',
 
-  // [2] Exit Interstitial Ad Unit ID (full-screen ad shown when exiting app)
+  // [2] Exit Interstitial Ad Unit ID (full-screen video ad shown when exiting app / 5x light toggles)
   exitInterstitialAdUnitId: 'ca-app-pub-4691559300152959/8593222066',
 
-  // [3] Banner Ad Unit ID (bottom anchored banner)
+  // [3] Banner Ad Unit ID (bottom anchored 320x50 banner)
   bannerAdUnitId: 'ca-app-pub-4691559300152959/2377052098',
 };
 
 /**
  * Official Google AdMob Test Ad Unit IDs
+ * Guaranteed to always deliver ads during development and testing on real devices.
  */
-const GOOGLE_TEST_IDS = {
+export const GOOGLE_TEST_IDS = {
   android: {
     appId: 'ca-app-pub-3940256099942544~3347511713',
-    banner: 'ca-app-pub-3940256099942544/6300978111',
+    banner: 'ca-app-pub-3940256099942544/6300978111', // Shows: "Nice job! This is a 320x50 test ad."
     appOpen: 'ca-app-pub-3940256099942544/9257395921',
     interstitial: 'ca-app-pub-3940256099942544/1033173712',
+    videoInterstitial: 'ca-app-pub-3940256099942544/8691691433', // Full-screen video with sound & timer
   },
   ios: {
     appId: 'ca-app-pub-3940256099942544~1458002511',
     banner: 'ca-app-pub-3940256099942544/2934735716',
     appOpen: 'ca-app-pub-3940256099942544/5575463023',
     interstitial: 'ca-app-pub-3940256099942544/4411468910',
+    videoInterstitial: 'ca-app-pub-3940256099942544/8691691433',
   },
 };
 
-const isProduction = process.env.EXPO_PUBLIC_ADMOB_ENV === 'production';
+/**
+ * Test Ads Mode:
+ * When testing on an Android device before Google Play release, newly created AdMob IDs
+ * return ERROR_CODE_NO_FILL (Code 3: No ad inventory).
+ * Setting this to true guarantees that Google Mobile Ads SDK immediately returns:
+ * - 320x50 Test Banner ("Nice job! This is a 320x50 test ad.") matching user screenshot
+ * - Full-screen Video Interstitial Ad matching user screenshot
+ */
+let isTestAdsModeActive = true;
+
+export function setTestAdsMode(active: boolean): void {
+  isTestAdsModeActive = active;
+}
+
+export function getTestAdsMode(): boolean {
+  return isTestAdsModeActive;
+}
 
 export const AdConfig = {
-  isProduction,
-
-  // [1] App Open Ad Unit ID (Launch)
-  get appOpenAdUnitId(): string {
-    if (Platform.OS === 'android') {
-      return (
-        process.env.EXPO_PUBLIC_ADMOB_ANDROID_APP_OPEN_ID ||
-        USER_ADMOB_IDS.appOpenAdUnitId ||
-        GOOGLE_TEST_IDS.android.appOpen
-      );
-    }
-    if (Platform.OS === 'ios') {
-      return (
-        process.env.EXPO_PUBLIC_ADMOB_IOS_APP_OPEN_ID ||
-        GOOGLE_TEST_IDS.ios.appOpen
-      );
-    }
-    return USER_ADMOB_IDS.appOpenAdUnitId || '';
+  get isTestingAds(): boolean {
+    return isTestAdsModeActive;
   },
 
-  // [2] Exit / Action Full-Screen Interstitial Ad Unit ID
-  get exitInterstitialAdUnitId(): string {
-    if (Platform.OS === 'android') {
-      return (
-        process.env.EXPO_PUBLIC_ADMOB_ANDROID_INTERSTITIAL_ID ||
-        USER_ADMOB_IDS.exitInterstitialAdUnitId ||
-        GOOGLE_TEST_IDS.android.interstitial
-      );
-    }
-    if (Platform.OS === 'ios') {
-      return (
-        process.env.EXPO_PUBLIC_ADMOB_IOS_EXIT_INTERSTITIAL_ID ||
-        GOOGLE_TEST_IDS.ios.interstitial
-      );
-    }
-    return USER_ADMOB_IDS.exitInterstitialAdUnitId || '';
+  get testBannerId(): string {
+    return Platform.OS === 'android' ? GOOGLE_TEST_IDS.android.banner : GOOGLE_TEST_IDS.ios.banner;
   },
 
-  // [3] Anchored Banner Ad Unit ID (Bottom of screen)
+  get testVideoAdUnitId(): string {
+    return Platform.OS === 'android' ? GOOGLE_TEST_IDS.android.videoInterstitial : GOOGLE_TEST_IDS.ios.videoInterstitial;
+  },
+
+  get testAppOpenId(): string {
+    return Platform.OS === 'android' ? GOOGLE_TEST_IDS.android.appOpen : GOOGLE_TEST_IDS.ios.appOpen;
+  },
+
+  get testInterstitialId(): string {
+    return Platform.OS === 'android' ? GOOGLE_TEST_IDS.android.interstitial : GOOGLE_TEST_IDS.ios.interstitial;
+  },
+
+  // Banner Ad Unit ID
   get bannerAdUnitId(): string {
-    if (Platform.OS === 'android') {
-      return (
-        process.env.EXPO_PUBLIC_ADMOB_ANDROID_BANNER_ID ||
-        USER_ADMOB_IDS.bannerAdUnitId ||
-        GOOGLE_TEST_IDS.android.banner
-      );
+    if (isTestAdsModeActive) {
+      return this.testBannerId;
     }
-    if (Platform.OS === 'ios') {
-      return (
-        process.env.EXPO_PUBLIC_ADMOB_IOS_BANNER_ID ||
-        GOOGLE_TEST_IDS.ios.banner
-      );
-    }
-    return USER_ADMOB_IDS.bannerAdUnitId || '';
+    return (
+      process.env.EXPO_PUBLIC_ADMOB_ANDROID_BANNER_ID ||
+      USER_ADMOB_IDS.bannerAdUnitId ||
+      this.testBannerId
+    );
   },
 
-  // App Open Ad Frequency Capping (0 ms allows reliable ad display on each test launch)
+  // Launch Video Ad Unit ID (plays full-screen video ad when opening the app)
+  get launchVideoAdUnitId(): string {
+    if (isTestAdsModeActive) {
+      return this.testVideoAdUnitId;
+    }
+    return (
+      process.env.EXPO_PUBLIC_ADMOB_ANDROID_APP_OPEN_ID ||
+      USER_ADMOB_IDS.appOpenAdUnitId ||
+      this.testVideoAdUnitId
+    );
+  },
+
+  // Interstitial Ad Unit ID (5x light toggles and exit)
+  get exitInterstitialAdUnitId(): string {
+    if (isTestAdsModeActive) {
+      return this.testVideoAdUnitId;
+    }
+    return (
+      process.env.EXPO_PUBLIC_ADMOB_ANDROID_INTERSTITIAL_ID ||
+      USER_ADMOB_IDS.exitInterstitialAdUnitId ||
+      this.testVideoAdUnitId
+    );
+  },
+
+  get interstitialAdUnitId(): string {
+    return this.exitInterstitialAdUnitId;
+  },
+
+  // Legacy alias
+  get appOpenAdUnitId(): string {
+    return this.launchVideoAdUnitId;
+  },
+
+  // Frequency capping
   appOpenAdIntervalMs: 0,
 
-  // Max wait time during launch for ad ready before giving up and proceeding immediately (3000 ms)
-  maxLaunchWaitMs: 3000,
+  // Max wait for launch video ad (3500ms)
+  maxLaunchWaitMs: 3500,
 };
