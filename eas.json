@@ -16,7 +16,11 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_ADMOB_ENV": "test"
+        "EXPO_PUBLIC_ADMOB_ENV": "production",
+        "EXPO_PUBLIC_ADMOB_APP_ID": "ca-app-pub-4691559300152959~6016914204",
+        "EXPO_PUBLIC_ADMOB_ANDROID_APP_OPEN_ID": "ca-app-pub-4691559300152959/4759672854",
+        "EXPO_PUBLIC_ADMOB_ANDROID_INTERSTITIAL_ID": "ca-app-pub-4691559300152959/8593222066",
+        "EXPO_PUBLIC_ADMOB_ANDROID_BANNER_ID": "ca-app-pub-4691559300152959/2377052098"
       }
     },
     "production": {

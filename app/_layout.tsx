@@ -26,22 +26,25 @@ export default function RootLayout() {
   useEffect(() => {
     async function prepareApp() {
       try {
-        // Asynchronously initialize Mobile Ads SDK in background
-        initializeMobileAds().then(() => {
-          // Preload exit interstitial ad so it's ready when user closes app
-          preloadExitInterstitialAd();
-        }).catch(() => {});
+        // Render UI and dismiss splash screen immediately without blocking
+        setAppReady(true);
+        await SplashScreen.hideAsync().catch(() => {});
 
-        // Non-blocking App Open ad check:
-        // Proceeds immediately if ad is not ready, disabled, or fails
-        await new Promise<void>((resolve) => {
-          tryShowAppOpenAdOnLaunch(() => {
-            resolve();
-          });
-        });
+        // Safely initialize AdMob after Activity is fully resumed in foreground
+        setTimeout(() => {
+          initializeMobileAds()
+            .then(() => {
+              // Preload Interstitial ad for light toggles and exit
+              preloadExitInterstitialAd();
+              // Safely attempt App Open ad on startup
+              tryShowAppOpenAdOnLaunch(() => {});
+            })
+            .catch((err) => {
+              console.log('[AdMob] Init warning (app continues normally):', err);
+            });
+        }, 600);
       } catch (err) {
         console.warn('Initialization error:', err);
-      } finally {
         setAppReady(true);
         await SplashScreen.hideAsync().catch(() => {});
       }

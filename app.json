@@ -26,7 +26,8 @@
       },
       "permissions": [
         "android.permission.CAMERA",
-        "android.permission.FLASHLIGHT"
+        "android.permission.FLASHLIGHT",
+        "android.permission.RECORD_AUDIO"
       ],
       "predictiveBackGestureEnabled": false
     },
@@ -53,13 +54,28 @@
       [
         "react-native-google-mobile-ads",
         {
-          "androidAppId": "ca-app-pub-3940256099942544~3347511713",
-          "iosAppId": "ca-app-pub-3940256099942544~1458002511"
+          "androidAppId": "ca-app-pub-4691559300152959~6016914204",
+          "iosAppId": "ca-app-pub-4691559300152959~6016914204"
         }
       ]
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "b71c7337-eb79-4791-889e-7f8cf00c5100"
+      }
+    },
+    "owner": "smit_maru",
+    "react-native-google-mobile-ads": {
+      "android_app_id": "ca-app-pub-4691559300152959~6016914204",
+      "ios_app_id": "ca-app-pub-4691559300152959~6016914204"
     }
   }
 }

@@ -25,7 +25,7 @@ import { StrobeControl } from '../src/components/StrobeControl';
 import { BatteryIndicator } from '../src/components/BatteryIndicator';
 import { AdBanner } from '../src/components/ads/AdBanner';
 import { ExitAppDialog } from '../src/components/ads/ExitAppDialog';
-import { tryShowExitInterstitialAd } from '../src/components/ads/AppOpenAdManager';
+import { tryShowExitInterstitialAd, recordLightToggleAndCheckAd } from '../src/components/ads/AppOpenAdManager';
 import { LightMode, ColorPreset } from '../src/types';
 import {
   loadUserPreferences,
@@ -137,6 +137,16 @@ export default function HomeScreen() {
     tryShowExitInterstitialAd(() => {
       BackHandler.exitApp();
     });
+  };
+
+  const handleToggleTorch = async () => {
+    await toggleTorch();
+    recordLightToggleAndCheckAd();
+  };
+
+  const handleToggleStrobe = async () => {
+    await toggleStrobe();
+    recordLightToggleAndCheckAd();
   };
 
   const getStatusText = () => {
@@ -268,7 +278,7 @@ export default function HomeScreen() {
         {/* Central Torch Power Button */}
         <TorchButton
           isOn={isOn || isStrobeActive}
-          onToggle={toggleTorch}
+          onToggle={handleToggleTorch}
           colors={colors}
           disabled={isTransitioning}
           statusText={getStatusText()}
@@ -279,7 +289,7 @@ export default function HomeScreen() {
           isStrobeActive={isStrobeActive}
           strobeMode={strobeMode}
           strobeFrequency={strobeFrequency}
-          onToggleStrobe={toggleStrobe}
+          onToggleStrobe={handleToggleStrobe}
           onSelectMode={setStrobeMode}
           onFrequencyChange={setStrobeFrequency}
           colors={colors}

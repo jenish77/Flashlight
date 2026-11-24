@@ -16,14 +16,14 @@ import { Platform } from 'react-native';
  */
 
 export const USER_ADMOB_IDS = {
-  // [1] App Open Ad Unit ID (Paste your Android App Open ID here)
-  appOpenAdUnitId: '',
+  // [1] App Open Ad Unit ID (shown when opening the app)
+  appOpenAdUnitId: 'ca-app-pub-4691559300152959/4759672854',
 
-  // [2] Exit Interstitial Ad Unit ID (Paste your Android Interstitial ID here)
-  exitInterstitialAdUnitId: '',
+  // [2] Exit Interstitial Ad Unit ID (full-screen ad shown when exiting app)
+  exitInterstitialAdUnitId: 'ca-app-pub-4691559300152959/8593222066',
 
-  // [3] Banner Ad Unit ID (Optional: paste your Banner Ad ID here)
-  bannerAdUnitId: '',
+  // [3] Banner Ad Unit ID (bottom anchored banner)
+  bannerAdUnitId: 'ca-app-pub-4691559300152959/2377052098',
 };
 
 /**
@@ -51,12 +51,10 @@ export const AdConfig = {
 
   // [1] App Open Ad Unit ID (Launch)
   get appOpenAdUnitId(): string {
-    if (USER_ADMOB_IDS.appOpenAdUnitId) {
-      return USER_ADMOB_IDS.appOpenAdUnitId;
-    }
     if (Platform.OS === 'android') {
       return (
         process.env.EXPO_PUBLIC_ADMOB_ANDROID_APP_OPEN_ID ||
+        USER_ADMOB_IDS.appOpenAdUnitId ||
         GOOGLE_TEST_IDS.android.appOpen
       );
     }
@@ -66,17 +64,15 @@ export const AdConfig = {
         GOOGLE_TEST_IDS.ios.appOpen
       );
     }
-    return '';
+    return USER_ADMOB_IDS.appOpenAdUnitId || '';
   },
 
-  // [2] Exit Full-Screen Interstitial Ad Unit ID (Close / Exit)
+  // [2] Exit / Action Full-Screen Interstitial Ad Unit ID
   get exitInterstitialAdUnitId(): string {
-    if (USER_ADMOB_IDS.exitInterstitialAdUnitId) {
-      return USER_ADMOB_IDS.exitInterstitialAdUnitId;
-    }
     if (Platform.OS === 'android') {
       return (
-        process.env.EXPO_PUBLIC_ADMOB_ANDROID_EXIT_INTERSTITIAL_ID ||
+        process.env.EXPO_PUBLIC_ADMOB_ANDROID_INTERSTITIAL_ID ||
+        USER_ADMOB_IDS.exitInterstitialAdUnitId ||
         GOOGLE_TEST_IDS.android.interstitial
       );
     }
@@ -86,17 +82,15 @@ export const AdConfig = {
         GOOGLE_TEST_IDS.ios.interstitial
       );
     }
-    return '';
+    return USER_ADMOB_IDS.exitInterstitialAdUnitId || '';
   },
 
   // [3] Anchored Banner Ad Unit ID (Bottom of screen)
   get bannerAdUnitId(): string {
-    if (USER_ADMOB_IDS.bannerAdUnitId) {
-      return USER_ADMOB_IDS.bannerAdUnitId;
-    }
     if (Platform.OS === 'android') {
       return (
         process.env.EXPO_PUBLIC_ADMOB_ANDROID_BANNER_ID ||
+        USER_ADMOB_IDS.bannerAdUnitId ||
         GOOGLE_TEST_IDS.android.banner
       );
     }
@@ -106,12 +100,12 @@ export const AdConfig = {
         GOOGLE_TEST_IDS.ios.banner
       );
     }
-    return '';
+    return USER_ADMOB_IDS.bannerAdUnitId || '';
   },
 
-  // App Open Ad Frequency Capping (Minimum interval between App Open ads in milliseconds)
-  appOpenAdIntervalMs: 4 * 60 * 60 * 1000,
+  // App Open Ad Frequency Capping (0 ms allows reliable ad display on each test launch)
+  appOpenAdIntervalMs: 0,
 
-  // Max wait time during launch for ad ready before giving up and proceeding immediately
-  maxLaunchWaitMs: 1200,
+  // Max wait time during launch for ad ready before giving up and proceeding immediately (3000 ms)
+  maxLaunchWaitMs: 3000,
 };

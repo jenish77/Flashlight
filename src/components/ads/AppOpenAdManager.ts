@@ -228,11 +228,28 @@ function showLoadedAppOpenAd(onDismiss: () => void): void {
 }
 
 // =========================================================================
-// [2] EXIT INTERSTITIAL AD (FULL-SCREEN ADVERTISEMENT ON APP CLOSE)
+// [2] INTERSTITIAL AD (FULL-SCREEN AD: 5X LIGHT TOGGLE & APP EXIT)
 // =========================================================================
 
+// Counter for user flashlight on/off toggles
+let lightToggleCounter = 0;
+
 /**
- * Preloads the full-screen interstitial ad for when the user exits the app.
+ * Called every time the user turns ON or turns OFF the light.
+ * Every 5 toggles, it automatically triggers the full-screen interstitial ad.
+ */
+export function recordLightToggleAndCheckAd(): void {
+  lightToggleCounter += 1;
+  console.log(`[AdMob] Light toggle count: ${lightToggleCounter}`);
+
+  if (lightToggleCounter % 5 === 0) {
+    console.log('[AdMob] 5th light toggle reached! Showing interstitial advertisement...');
+    tryShowInterstitialAd();
+  }
+}
+
+/**
+ * Preloads the full-screen interstitial ad in background.
  */
 export function preloadExitInterstitialAd(): void {
   if (!isAdMobNativeBinaryAvailable() || isExitInterstitialShowing) return;
@@ -253,7 +270,7 @@ export function preloadExitInterstitialAd(): void {
       AdEventType.LOADED,
       () => {
         isExitInterstitialLoaded = true;
-        console.log('[AdMob] Exit Interstitial ad preloaded & ready.');
+        console.log('[AdMob] Interstitial ad preloaded & ready.');
         unsubscribeLoaded();
       }
     );
@@ -262,32 +279,35 @@ export function preloadExitInterstitialAd(): void {
       AdEventType.ERROR,
       (error: any) => {
         isExitInterstitialLoaded = false;
-        console.log('[AdMob] Exit Interstitial ad failed to load:', error?.message);
+        console.log('[AdMob] Interstitial ad failed to load:', error?.message);
         unsubscribeError();
-        // Retry preload after 15 seconds
-        setTimeout(preloadExitInterstitialAd, 15000);
+        // Retry preload after 10 seconds
+        setTimeout(preloadExitInterstitialAd, 10000);
       }
     );
 
     exitInterstitialInstance.load();
   } catch (err) {
-    console.warn('[AdMob] Exception preloading Exit Interstitial ad:', err);
+    console.warn('[AdMob] Exception preloading Interstitial ad:', err);
   }
 }
 
+export const preloadInterstitialAd = preloadExitInterstitialAd;
+
 /**
- * Shows the full-screen Exit Interstitial Ad when closing the app.
- * Calls onComplete() once the ad is closed, or immediately if ad is not ready/fails.
+ * Shows the full-screen Interstitial Ad (for 5x light toggles or app exit).
+ * Calls onComplete() once the ad is closed or immediately if ad is not ready/fails.
  */
-export function tryShowExitInterstitialAd(onComplete: () => void): void {
+export function tryShowInterstitialAd(onComplete?: () => void): void {
   if (!isAdMobNativeBinaryAvailable()) {
-    onComplete();
+    onComplete?.();
     return;
   }
 
   if (!isExitInterstitialLoaded || !exitInterstitialInstance) {
-    console.log('[AdMob] Exit Interstitial not ready; proceeding with exit directly.');
-    onComplete();
+    console.log('[AdMob] Interstitial not ready yet; preloading for next event.');
+    preloadExitInterstitialAd();
+    onComplete?.();
     return;
   }
 
@@ -308,7 +328,9 @@ export function tryShowExitInterstitialAd(onComplete: () => void): void {
       exitInterstitialInstance = null;
       if (unsubClosed) unsubClosed();
       if (unsubError) unsubError();
-      onComplete();
+      // Preload next interstitial ad immediately for seamless subsequent views
+      setTimeout(preloadExitInterstitialAd, 1000);
+      onComplete?.();
     }
   };
 
@@ -317,14 +339,21 @@ export function tryShowExitInterstitialAd(onComplete: () => void): void {
     unsubError = exitInterstitialInstance.addAdEventListener(AdEventType.ERROR, finishOnce);
   }
 
-  // Safety fallback timer: if ad fails to dismiss within 8 seconds, force exit
+  // Safety fallback timer: if ad fails to dismiss within 8 seconds, safely dismiss
   const safetyTimeout = setTimeout(finishOnce, 8000);
 
   try {
     exitInterstitialInstance.show();
   } catch (e) {
     clearTimeout(safetyTimeout);
-    console.warn('[AdMob] Exception showing Exit Interstitial:', e);
+    console.warn('[AdMob] Exception showing Interstitial ad:', e);
     finishOnce();
   }
+}
+
+/**
+ * Shows the full-screen Exit Interstitial Ad when closing the app.
+ */
+export function tryShowExitInterstitialAd(onComplete: () => void): void {
+  tryShowInterstitialAd(onComplete);
 }
